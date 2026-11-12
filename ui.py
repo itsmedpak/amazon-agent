@@ -13,7 +13,7 @@ CSS = """
 <style>
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
-.block-container {padding-top: 1rem; padding-bottom: 4rem; max-width: 1400px;}
+.block-container {padding-top: 4rem; padding-bottom: 4rem; max-width: 1400px;}
 
 .app-header {display: flex; align-items: center; gap: 16px; padding: 14px 20px;
   border-radius: 14px; margin-bottom: 1.2rem;
