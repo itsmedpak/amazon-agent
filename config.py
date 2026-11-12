@@ -32,5 +32,27 @@ EXPECTED_HEADINGS = {name: f"Best Sellers in {name}" for name in CATEGORIES}
 EXPECTED_HEADINGS["Patio Furniture & Accessories"] = "Best Sellers in Patio Furniture & Accessories"
 EXPECTED_HEADINGS["Entryway Furniture"] = "Best Sellers in Entryway Furniture"
 
+ASSETS_DIR = BASE_DIR / "assets"
+
+LOGO_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".svg")
+
+
+def find_logo():
+    """assets/logo.* if present, otherwise the first image in assets/, else None."""
+    if not ASSETS_DIR.exists():
+        return None
+    files = sorted(f for f in ASSETS_DIR.iterdir() if f.suffix.lower() in LOGO_EXTS)
+    if not files:
+        return None
+    named = [f for f in files if f.stem.lower() == "logo"]
+    return (named or files)[0]
+
+APP_NAME = "NTC Amazon Intelligence"
+APP_TAGLINE = "Amazon.ae market research platform"
+
+MIN_PASSWORD_LENGTH = 8
+MAX_FAILED_ATTEMPTS = 5
+LOCK_SECONDS = 300
+
 DATA_DIR.mkdir(exist_ok=True)
 DEBUG_DIR.mkdir(exist_ok=True)

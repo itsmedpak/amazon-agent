@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from html import escape
 from io import BytesIO
 
@@ -8,7 +9,11 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 import analysis
+from config import APP_NAME, find_logo
+from reportlab.lib.utils import ImageReader
 
+NAVY = colors.HexColor("#0f2a4a")
+AMBER = colors.HexColor("#f59e0b")
 INK = colors.HexColor("#111827")
 MUTED = colors.HexColor("#6b7280")
 ACCENT = colors.HexColor("#1d4ed8")
@@ -55,6 +60,12 @@ def delta(v):
     return "0" if v == 0 else f"{v:+d}"
 
 
+def link(url):
+    if not url:
+        return "N/A"
+    return Paragraph(f'<a href="{escape(str(url), quote=True)}" color="#1d4ed8"><u>Open</u></a>', CELL)
+
+
 def _style():
     return TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), INK),
@@ -70,18 +81,19 @@ def _style():
 
 def product_table(frame, has_prev):
     head = ["Rank", "Product", "Price", "Rating", "Ratings"]
-    widths = [40, 380, 80, 55, 65]
     if has_prev:
         head += ["Rank change", "Status"]
-        widths += [60, 112]
+        widths = [38, 358, 78, 48, 56, 56, 108, 50]
     else:
-        widths[1] += 172
+        widths = [40, 502, 80, 55, 65, 50]
+    head.append("Amazon")
     rows = [head]
     for r in frame.itertuples():
         row = [count(r.rank), p(str(r.title)[:140], CELL), money(r.price_aed),
                rating(r.rating), count(r.reviews)]
         if has_prev:
             row += [delta(r.rank_change), r.status]
+        row.append(link(r.product_url))
         rows.append(row)
     t = Table(rows, colWidths=widths, repeatRows=1)
     t.setStyle(_style())
@@ -89,23 +101,56 @@ def product_table(frame, has_prev):
 
 
 def movers_table(frame):
-    rows = [["Product", "Previous rank", "Current rank", "Change"]]
+    rows = [["Product", "Previous rank", "Current rank", "Change", "Amazon"]]
     for r in frame.itertuples():
-        rows.append([p(str(r.title)[:110], CELL), count(r.prev_rank), count(r.rank), delta(r.rank_change)])
-    t = Table(rows, colWidths=[300, 80, 80, 60], repeatRows=1)
+        rows.append([p(str(r.title)[:110], CELL), count(r.prev_rank), count(r.rank),
+                     delta(r.rank_change), link(r.product_url)])
+    t = Table(rows, colWidths=[300, 80, 80, 60, 60], repeatRows=1)
     t.setStyle(_style())
     return t
 
 
-def _footer(canvas, doc):
-    canvas.saveState()
-    canvas.setFont("Helvetica", 8)
-    canvas.setFillColor(MUTED)
-    w = landscape(A4)[0]
-    canvas.drawString(25, 16, "Amazon.ae Market Intelligence - internal research, not a purchasing recommendation")
-    canvas.drawRightString(w - 25, 16, f"Page {doc.page}")
-    canvas.restoreState()
+def _chrome(generated):
+    logo = find_logo()
+    box_h = 24
+    logo_w = None
+    if logo is not None and logo.suffix.lower() in (".png", ".jpg", ".jpeg"):
+        try:
+            iw, ih = ImageReader(str(logo)).getSize()
+            logo_w = min(iw / ih * box_h, 150)
+        except Exception:
+            logo_w = None
 
+    def draw(canvas, doc):
+        w, h = landscape(A4)
+        canvas.saveState()
+        # header band
+        canvas.setFillColor(NAVY)
+        canvas.rect(0, h - 42, w, 42, fill=1, stroke=0)
+        canvas.setFillColor(AMBER)
+        canvas.rect(0, h - 44, w, 2, fill=1, stroke=0)
+        x = 25
+        if logo_w:
+            canvas.setFillColor(colors.white)
+            canvas.roundRect(x, h - 37, logo_w + 12, box_h + 8, 6, fill=1, stroke=0)
+            canvas.drawImage(str(logo), x + 6, h - 33, width=logo_w, height=box_h, mask="auto")
+            x += logo_w + 24
+        canvas.setFillColor(colors.white)
+        canvas.setFont("Helvetica-Bold", 13)
+        canvas.drawString(x, h - 25, APP_NAME)
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#cbd5e1"))
+        canvas.drawRightString(w - 25, h - 25, "Amazon.ae Best Sellers Research")
+        # footer
+        canvas.setStrokeColor(colors.lightgrey)
+        canvas.line(25, 28, w - 25, 28)
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(MUTED)
+        canvas.drawString(25, 16, f"{APP_NAME} - internal research, not a purchasing recommendation")
+        canvas.drawCentredString(w / 2, 16, f"Generated {generated}")
+        canvas.drawRightString(w - 25, 16, f"Page {doc.page}")
+        canvas.restoreState()
+    return draw
 
 def _kpi_row(cells):
     flow = [[Paragraph(safe(v), KPI_V), Paragraph(safe(l), KPI_L)] for v, l in cells]
@@ -124,13 +169,13 @@ def build_pdf(category, data, full_list=True):
     has_prev = prev_run is not None
     s = analysis.summarize(df, has_prev)
     collected = analysis.fmt_ts(run["started_at"])
+    generated = analysis.fmt_ts(datetime.now(timezone.utc).isoformat())
 
     buf = BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=landscape(A4), leftMargin=25, rightMargin=25,
-        topMargin=28, bottomMargin=34,
-        title=f"Amazon.ae Best Sellers - {category}",
-        author="Amazon.ae Market Intelligence",
+        topMargin=60, bottomMargin=38,
+        title=f"{APP_NAME} - {category}", author=APP_NAME,
     )
 
     story = [p("Amazon.ae Best Sellers Report", H1), p(category, SUB)]
@@ -216,5 +261,6 @@ def build_pdf(category, data, full_list=True):
     ]:
         story.append(Paragraph(safe(text), BULLET, bulletText="•"))
 
-    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
+    chrome = _chrome(generated)
+    doc.build(story, onFirstPage=chrome, onLaterPages=chrome)
     return buf.getvalue()
